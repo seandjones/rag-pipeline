@@ -5,10 +5,18 @@ from fastapi import FastAPI, HTTPException
 from openai import OpenAI
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="RAG Pipeline", description="RAG Pipeline using OpenAI and PostgreSQL")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ensure_schema()
+    yield
+
+
+app = FastAPI(title="RAG Pipeline", description="RAG Pipeline using OpenAI and PostgreSQL", lifespan=lifespan)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
+    
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost/ragdemo")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")
@@ -154,11 +162,6 @@ def read_files(directory: str, patterns: list[str]) -> list[tuple[str, str]]:
             if content:
                 files_with_content.append((str(file_path), content))
     return files_with_content
-
-
-@app.on_event("startup")
-def startup_event() -> None:
-    ensure_schema()
 
 
 @app.post("/ingest-local")
