@@ -83,56 +83,6 @@ Response shape:
 ## Notes
 
 - Large folders can take time because every chunk makes an embeddings API call.
-- If you re-ingest the same folder repeatedly, duplicate chunks are currently inserted. Add dedupe/upsert logic later if needed.
-# seanjones.io rag pipeline
-
-RAG pipeline for searching internal documents via google drive
-
-## Architecture
-
-### 1. Documents
-
-### 2. Chunking
-
-### 3. Embeddings
-
-### 4. Vector DB (pgvector)
-
-### 5. User Question
-
-### 6. Similarity Search
-
-### 7. Relevant Chunks
-
-### 8. LLM Prompt
-
-### 9. Answer
-
-### Core Components & Flow
-
-#### 1. Entry Points & API Layer
-- **main.py**: FastAPI application entry point with lifespan management
-- **api/chat.py**: REST API endpoints for chat functionality
-- **/docs**: Swagger UI for testing
-
-#### 2. Docker setup
-- **compose.yaml**: main docker entry point
-```
-    docker compose up
-```
-
-##### get docker instance information
-```
-    docker ps -a 
-```
-
-## Running the Application
-
-To run the application, execute the following command:
-
-```bash
-uvicorn main:app --reload --port 8001
-```
 
 ## Contributing
 

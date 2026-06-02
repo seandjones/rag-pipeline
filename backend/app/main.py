@@ -6,6 +6,9 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+load_dotenv()
+
 
 
 @asynccontextmanager
@@ -15,7 +18,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="RAG Pipeline", description="RAG Pipeline using OpenAI and PostgreSQL", lifespan=lifespan)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI()
     
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost/ragdemo")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
@@ -36,6 +39,30 @@ class ChatRequest(BaseModel):
     top_k: int = 5
 
 
+def normalize_patterns(patterns: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for pattern in patterns:
+        cleaned = pattern.strip()
+        if not cleaned:
+            continue
+
+        # Accept shorthand extensions like "txt" or ".txt" in addition to glob syntax.
+        if "*" not in cleaned and "?" not in cleaned and "[" not in cleaned:
+            if cleaned.startswith("."):
+                cleaned = f"*{cleaned}"
+            elif "/" not in cleaned:
+                cleaned = f"*.{cleaned}"
+
+        normalized.append(cleaned)
+
+    return normalized or ["*.txt", "*.md"]
+
+
+def list_local_files(directory: str) -> list[Path]:
+    base_dir = Path(directory).expanduser().resolve()
+    return [path for path in base_dir.rglob("*") if path.is_file()]
+
+
 def ensure_schema() -> None:
     with engine.begin() as connection:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
@@ -49,6 +76,38 @@ def ensure_schema() -> None:
                     content TEXT NOT NULL,
                     embedding VECTOR(1536) NOT NULL
                 )
+                """
+            )
+        )
+
+        # Backward-compatible migration for older tables created before source metadata.
+        connection.execute(text("ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS source_path TEXT"))
+        connection.execute(text("ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS chunk_index INTEGER"))
+
+        connection.execute(
+            text(
+                """
+                UPDATE document_chunks
+                SET source_path = COALESCE(source_path, 'unknown')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE document_chunks
+                SET chunk_index = COALESCE(chunk_index, 0)
+                """
+            )
+        )
+
+        connection.execute(text("ALTER TABLE document_chunks ALTER COLUMN source_path SET NOT NULL"))
+        connection.execute(text("ALTER TABLE document_chunks ALTER COLUMN chunk_index SET NOT NULL"))
+        connection.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_document_chunks_source_chunk
+                ON document_chunks (source_path, chunk_index)
                 """
             )
         )
@@ -72,12 +131,14 @@ def chunk_text(content: str, chunk_size: int = 1000, overlap: int = 100) -> list
 def embedding_to_pgvector(embedding: list[float]) -> str:
     return "[" + ",".join(str(value) for value in embedding) + "]"
 
+
 def get_embedding(text: str) -> list[float]:
     response = client.embeddings.create(
         model=EMBEDDING_MODEL,
         input=text
     )
     return response.data[0].embedding
+
 
 def store_embedding(content: str, embedding: list[float], source_path: str, chunk_index: int) -> None:
     embedding_literal = embedding_to_pgvector(embedding)
@@ -87,6 +148,10 @@ def store_embedding(content: str, embedding: list[float], source_path: str, chun
                 """
                 INSERT INTO document_chunks (source_path, chunk_index, content, embedding)
                 VALUES (:source_path, :chunk_index, :content, CAST(:embedding AS vector))
+                ON CONFLICT (source_path, chunk_index)
+                DO UPDATE SET
+                    content = EXCLUDED.content,
+                    embedding = EXCLUDED.embedding
                 """
             ),
             {
@@ -97,11 +162,13 @@ def store_embedding(content: str, embedding: list[float], source_path: str, chun
             },
         )
 
+
 def query_database(query: str) -> str:
     with engine.connect() as connection:
         result = connection.execute(text(query))
         return "\n".join([str(row) for row in result])
     
+
 def search_similar_chunks(query: str, top_k: int = 5) -> list[str]:
     query_embedding = get_embedding(query)
     query_vector = embedding_to_pgvector(query_embedding)
@@ -121,6 +188,7 @@ def search_similar_chunks(query: str, top_k: int = 5) -> list[str]:
             chunks.append((source_path, content))
         return [f"Source: {source_path}\n{content}" for source_path, content in chunks]
 
+
 # cosine similarity function to compare query embedding with chunk embeddings
 def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     dot_product = sum(a * b for a, b in zip(vec1, vec2))
@@ -130,12 +198,14 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
         return 0.0
     return dot_product / (norm1 * norm2)
 
+
 def build_prompt(query: str, context: list[str]) -> str:
     prompt = "You are a helpful assistant. Using ONLY the following context to answer the question:\n\n"
     for i, chunk in enumerate(context):
         prompt += f"Chunk {i + 1}:\n{chunk}\n\n"
     prompt += f"Question: {query}\nAnswer:"
     return prompt
+
 
 def generate_answer(prompt: str) -> str:
     response = client.chat.completions.create(
@@ -147,20 +217,29 @@ def generate_answer(prompt: str) -> str:
             },
             {"role": "user", "content": prompt},
         ],
+        stream=True
     )
     return response.choices[0].message.content.strip()
 
 
 def read_files(directory: str, patterns: list[str]) -> list[tuple[str, str]]:
     base_dir = Path(directory).expanduser().resolve()
+    normalized_patterns = normalize_patterns(patterns)
     files_with_content: list[tuple[str, str]] = []
-    for pattern in patterns:
+    seen_paths: set[str] = set()
+    for pattern in normalized_patterns:
         for file_path in base_dir.rglob(pattern):
             if not file_path.is_file():
                 continue
+
+            file_key = str(file_path)
+            if file_key in seen_paths:
+                continue
+
             content = file_path.read_text(encoding="utf-8", errors="ignore").strip()
             if content:
-                files_with_content.append((str(file_path), content))
+                files_with_content.append((file_key, content))
+                seen_paths.add(file_key)
     return files_with_content
 
 
@@ -171,12 +250,20 @@ def ingest_local(request: IngestRequest):
         raise HTTPException(status_code=400, detail="directory must exist and be a folder")
 
     try:
-        files = read_files(str(target_dir), request.patterns)
+        normalized_patterns = normalize_patterns(request.patterns)
+        files = read_files(str(target_dir), normalized_patterns)
+        all_local_files = list_local_files(str(target_dir))
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"could not read files: {exc}") from exc
 
     if not files:
-        return {"message": "No matching non-empty files found", "chunks_stored": 0}
+        return {
+            "message": "No matching non-empty files found",
+            "chunks_stored": 0,
+            "patterns_used": normalized_patterns,
+            "total_files_in_directory": len(all_local_files),
+            "sample_files": [str(path) for path in all_local_files[:10]],
+        }
 
     total_chunks = 0
     for source_path, content in files:
