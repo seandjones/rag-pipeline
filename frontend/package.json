@@ -1,0 +1,30 @@
+{
+  "name": "rag-pipeline-frontend",
+  "version": "0.0.1",
+  "description": "Frontend assets for RAG Pipeline",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seandjones/rag-pipeline.git"
+  },
+  "keywords": [
+    "rag"
+  ],
+  "author": "seanjones.io",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/seandjones/rag-pipeline/issues"
+  },
+  "homepage": "https://github.com/seandjones/rag-pipeline#readme",
+  "dependencies": {
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3"
+  }
+}
