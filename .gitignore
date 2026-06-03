@@ -221,6 +221,33 @@ __marimo__/
 .streamlit/secrets.toml
 
 # ============================================================================
+# Node.js / Frontend
+# ============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+out/
+.output/
+.nuxt/
+.next/
+
+# Vite
+.vite/
+
+# Testing
+coverage/
+.nyc_output/
+
+# ============================================================================
 # IDE / Editor
 # ============================================================================
 .idea/
