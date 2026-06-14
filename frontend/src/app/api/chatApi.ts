@@ -1,9 +1,10 @@
-import type { ChatResponse } from '@/types';
+import type { ChatResponse, HistoryMessage } from '@/types';
 import { baseApi } from './baseApi';
 
 interface ChatRequest {
   question: string;
   top_k?: number;
+  messages?: HistoryMessage[];
 }
 
 export const chatApi = baseApi.injectEndpoints({

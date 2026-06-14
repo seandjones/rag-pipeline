@@ -16,8 +16,15 @@ export function ChatPage() {
   const messages = useAppSelector((s) => s.chat.messages);
   const [sendChat, { isLoading }] = useChatMutation();
 
+  const MAX_HISTORY_TURNS = 10;
+
   const handleSubmit = useCallback(
     async (question: string) => {
+      const history = messages
+        .filter((m) => m.content && !m.isStreaming)
+        .slice(-MAX_HISTORY_TURNS)
+        .map((m) => ({ role: m.role, content: m.content }));
+
       const userMsgId = uuidv4();
       dispatch(addMessage({ id: userMsgId, role: 'user', content: question }));
 
@@ -27,7 +34,7 @@ export function ChatPage() {
       );
 
       try {
-        const result = await sendChat({ question, top_k: 5 }).unwrap();
+        const result = await sendChat({ question, top_k: 5, messages: history }).unwrap();
         dispatch(
           addMessage({
             id: assistantMsgId,
