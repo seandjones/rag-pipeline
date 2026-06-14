@@ -1,3 +1,8 @@
+export interface HistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface ToolCall {
   name: string;
   args: Record<string, unknown>;

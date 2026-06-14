@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -8,6 +10,12 @@ class IngestRequest(BaseModel):
     overlap: int = 100
 
 
+class HistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatRequest(BaseModel):
     question: str
     top_k: int = 5
+    messages: list[HistoryMessage] = []

@@ -26,7 +26,13 @@ async def chat(
     session: AsyncSession = Depends(get_session),
     client: AsyncOpenAI = Depends(get_openai_client),
 ) -> ChatResponse:
-    result = await run_agent(request.question, session, client, top_k=request.top_k)
+    result = await run_agent(
+        request.question,
+        session,
+        client,
+        top_k=request.top_k,
+        history=[m.model_dump() for m in request.messages],
+    )
     return ChatResponse(
         answer=result.answer,
         sources=result.sources,

@@ -59,6 +59,7 @@ async def run_agent(
     session: AsyncSession,
     client: AsyncOpenAI,
     top_k: int = 5,
+    history: list[dict] | None = None,
 ) -> AgentResponse:
     messages: list[ChatCompletionMessageParam] = [
         {
@@ -69,6 +70,7 @@ async def run_agent(
                 "Answer only based on retrieved content."
             ),
         },
+        *(history or []),
         {"role": "user", "content": question},
     ]
 
