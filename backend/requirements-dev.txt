@@ -1,0 +1,6 @@
+pytest>=9.1
+pytest-asyncio>=1.4,<2
+pytest-cov>=7.1
+ruff~=0.16.0
+# httpx drives the FastAPI app in tests; none of the app's dependencies install it.
+httpx>=0.28
