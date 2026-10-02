@@ -1,5 +1,7 @@
 # Agentic RAG Pipeline
 
+[![CI](https://github.com/seandjones/rag-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/seandjones/rag-pipeline/actions/workflows/ci.yml)
+
 A production-ready Retrieval-Augmented Generation (RAG) system with an agentic loop. The LLM autonomously decides when to search the knowledge base, how many times, and with what queries — then synthesizes a grounded answer. Documents are ingested asynchronously into a pgvector-backed PostgreSQL store.
 
 **Stack:** FastAPI · AsyncOpenAI · SQLAlchemy async · asyncpg · pgvector · React 19 · TypeScript · Redux Toolkit · Vite
@@ -159,6 +161,43 @@ docker run -d --rm \
   rag-frontend:prod
 # → http://localhost
 ```
+
+---
+
+## Running tests
+
+CI runs the lint, build, and test commands below on every push and pull request.
+
+### Backend
+
+Unit tests need nothing running. Integration tests need Postgres with pgvector. They use their own `ragdemo_test` database, never your `ragdemo` data, and skip with a message if Postgres isn't reachable or doesn't have pgvector.
+
+```bash
+docker compose up -d postgres        # if 5432 is taken: POSTGRES_PORT=5433 docker compose up -d postgres
+cd backend
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+
+# Only needed if Postgres isn't on localhost:5432
+export TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/ragdemo_test
+
+pytest                        # everything
+pytest -m "not integration"   # unit tests only
+pytest --cov=app              # with coverage
+ruff check .                  # lint
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm test              # run once
+npm run test:watch    # re-run on save
+npm run coverage      # with coverage
+```
+
+Tests marked `it.fails` document known bugs. They pass while the bug exists and fail once it's fixed, which is the signal to switch them to `it`.
 
 ---
 
