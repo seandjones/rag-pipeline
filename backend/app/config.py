@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     chat_model: str = "gpt-4o-mini"
     openai_api_key: str = ""
+    google_service_account_json: str = ""
 
     @computed_field  # type: ignore[misc]
     @property
