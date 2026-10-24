@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
 from app.models.responses import DocumentsResponse
 from app.services.retrieval import delete_document, list_documents
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 

@@ -10,6 +10,13 @@ class IngestRequest(BaseModel):
     overlap: int = 100
 
 
+class GDriveIngestRequest(BaseModel):
+    folder_id: str = Field(..., description="Google Drive folder ID to ingest from")
+    patterns: list[str] = Field(default_factory=lambda: ["*.txt", "*.md", "*.pdf"])
+    chunk_size: int = 1000
+    overlap: int = 100
+
+
 class HistoryMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str

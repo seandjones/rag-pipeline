@@ -2,14 +2,29 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from openai import AsyncOpenAI
 
 from app.db.engine import AsyncSessionLocal
-from app.models.requests import IngestRequest
+from app.models.requests import GDriveIngestRequest, IngestRequest
 from app.models.responses import IngestResponse, JobStatus
-from app.services.chunker import chunk_text, extract_text_from_pdf_bytes, normalize_patterns, read_files
+from app.services.chunker import (
+    chunk_text,
+    extract_text_from_pdf_bytes,
+    normalize_patterns,
+    read_files,
+)
 from app.services.embeddings import batch_embeddings
+from app.services.gdrive import read_drive_files
 from app.services.retrieval import store_embedding
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -132,6 +147,50 @@ async def ingest_upload(
     background_tasks.add_task(
         _run_upload_ingestion, job_id, file_data, chunk_size, overlap, openai_client
     )
+    return IngestResponse(status="accepted", job_id=job_id)
+
+
+async def _run_gdrive_ingestion(
+    job_id: str,
+    ingest_request: GDriveIngestRequest,
+    openai_client: AsyncOpenAI,
+) -> None:
+    _jobs[job_id].status = "running"
+    try:
+        files = read_drive_files(ingest_request.folder_id, ingest_request.patterns)
+
+        total_chunks = 0
+        async with AsyncSessionLocal() as session:
+            for source_path, content in files:
+                chunks = chunk_text(
+                    content.replace("\x00", ""),
+                    chunk_size=ingest_request.chunk_size,
+                    overlap=ingest_request.overlap,
+                )
+                embeddings = await batch_embeddings(chunks, openai_client)
+                for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                    await store_embedding(chunk, embedding, source_path, idx, session)
+                    total_chunks += 1
+            await session.commit()
+
+        _jobs[job_id].status = "complete"
+        _jobs[job_id].files_indexed = len(files)
+        _jobs[job_id].chunks_stored = total_chunks
+
+    except Exception as exc:
+        _jobs[job_id].status = "failed"
+        _jobs[job_id].error = str(exc)
+
+
+@router.post("/gdrive", response_model=IngestResponse, status_code=202)
+async def ingest_gdrive(
+    request: GDriveIngestRequest,
+    background_tasks: BackgroundTasks,
+    openai_client: AsyncOpenAI = Depends(get_openai_client),
+) -> IngestResponse:
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = JobStatus(job_id=job_id, status="pending")
+    background_tasks.add_task(_run_gdrive_ingestion, job_id, request, openai_client)
     return IngestResponse(status="accepted", job_id=job_id)
 
 
