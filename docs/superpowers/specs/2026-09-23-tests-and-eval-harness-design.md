@@ -175,9 +175,12 @@ Record format (one JSON object per line):
 }
 ```
 
-- `must_include` is a list of required facts. Each fact is a list of accepted alternatives, matched case-insensitively after collapsing whitespace.
-- `must_not_include` holds strings that must not appear.
+- `must_include` is a list of required facts. Each fact is a list of accepted alternatives.
+- `must_not_include` holds strings that must not appear. An answer that mentions a superseded value fails, even as a contrast ("Quarterly; v1.0 said semi-annually"), so a good answer states the current policy only.
+- Matching for both uses `evals.dataset.fact_present`. It is case-insensitive, collapses whitespace, folds typographic dashes and quotes to ASCII, and matches whole words with an optional plural "s" or "es" on the last word, so "4 hours" never matches "24 hours". Other inflections and hyphenated forms ("compromised", "4-hour") are listed explicitly as alternatives.
+- Each `reference_answer` says only what its question asks. Extra details live in `notes`, so a concise correct answer is not marked as missing something.
 - For `unanswerable` questions, `expected_sources` and `must_include` are empty and `should_refuse` is true.
+- `unanswerable` questions also carry `absent_terms`: words or phrases that must never appear anywhere in the corpus (for example "bug bounty"). This proves the question is truly unanswerable rather than just hard to find. Terms match as whole words, so "SLA" does not match "translate".
 
 ### Dataset integrity tests (free, run in CI)
 
@@ -187,12 +190,12 @@ Record format (one JSON object per line):
 - ids are unique and categories are valid;
 - every `expected_sources` entry exists in the corpus;
 - for each answerable question, at least one alternative of every `must_include` fact appears in the text of its `expected_sources`;
-- every `unanswerable` question has `should_refuse: true` and no expected sources;
+- every `unanswerable` question has `should_refuse: true`, no expected sources, and at least one `absent_terms` entry, and none of those terms appears anywhere in the corpus;
 - every `version_conflict` question has a non-empty `must_not_include` list.
 
 ### Versioning
 
-Any edit to the corpus or the questions creates a new dataset version (`policies_v2.jsonl`). Each run records the dataset file name and a SHA-256 hash of the dataset plus the corpus, and `compare` refuses to compare runs whose hashes differ unless `--allow-dataset-mismatch` is passed.
+Any edit to the corpus or the questions creates a new dataset version (`policies_v2.jsonl`). Each run records the dataset file name and a SHA-256 hash of the dataset plus the corpus plus `evals/dataset.py` (so a matcher change is a visible change), and `compare` refuses to compare runs whose hashes differ unless `--allow-dataset-mismatch` is passed.
 
 ### Review
 
@@ -223,7 +226,7 @@ All documents and questions are drafted first, then reviewed question by questio
   - `mrr`: 1 divided by the rank of the first expected source, or 0 if none was retrieved.
 
   For the `agent` target, retrieval is scored on the de-duplicated union of everything its tool calls retrieved, in order.
-- **Facts:** `facts_score` is the share of `must_include` facts matched. `forbidden_hit` is true if any `must_not_include` string appears.
+- **Facts:** `facts_score` is the share of `must_include` facts matched with `fact_present`. `forbidden_hit` is true if `fact_present` finds any `must_not_include` string.
 - **Refusal:**
   - `refused` is true if the answer contains the refusal phrase.
   - A `correct_refusal` is `should_refuse` and `refused`.
@@ -233,7 +236,7 @@ All documents and questions are drafted first, then reviewed question by questio
 
 Two rubrics. Each returns JSON `{"score": 0 | 1 | 2, "reason": "..."}` at temperature 0 with JSON output mode.
 
-- **Correctness:** compares the answer to the reference answer. 2 = fully correct, 1 = partly correct or missing a detail, 0 = wrong or contradicts the reference.
+- **Correctness:** compares the answer to the reference answer, judging only what the question asks. 2 = fully correct, 1 = partly correct or missing a detail the question asks for, 0 = wrong or contradicts the reference.
 - **Grounding:** checks every claim in the answer against the retrieved context. 2 = all supported, 1 = a minor unsupported detail, 0 = a material unsupported claim.
 
 Both rubrics are skipped for `unanswerable` questions, which are scored by refusal alone. A reply that cannot be parsed is retried once, then recorded as `judge_error` and counted as a failure.

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Iterator
 
 import httpx
 import pytest
@@ -11,11 +12,18 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def fake_openai() -> FakeOpenAI:
+def fake_openai() -> Iterator[FakeOpenAI]:
     client = FakeOpenAI()
     # The routers read the client from app.state, which the lifespan normally fills in.
+    # Put back whatever was there afterwards, so no later test inherits this fake.
+    had_client = hasattr(app.state, "openai_client")
+    previous = getattr(app.state, "openai_client", None)
     app.state.openai_client = client
-    return client
+    yield client
+    if had_client:
+        app.state.openai_client = previous
+    else:
+        del app.state.openai_client
 
 
 @pytest.fixture
